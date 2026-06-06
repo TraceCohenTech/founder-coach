@@ -16,5 +16,5 @@ export default function Home() {
   if (step === 'landing')    return <Landing onStart={() => setStep('onboarding')} />
   if (step === 'onboarding') return <Onboarding onComplete={p => { setProfile(p); setStep('score') }} />
   if (step === 'score')      return <ReadinessScore profile={profile!} onContinue={() => setStep('chat')} onBack={() => setStep('onboarding')} />
-  return <Chat profile={profile!} />
+  return <Chat profile={profile!} onHome={() => setStep('landing')} />
 }

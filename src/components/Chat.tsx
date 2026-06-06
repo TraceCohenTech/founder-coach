@@ -1,7 +1,7 @@
 'use client'
 
 import { useChat } from 'ai/react'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import Link from 'next/link'
 import Message from './Message'
 import { UserProfile } from '@/lib/system-prompt'
@@ -64,8 +64,9 @@ function buildStarters(p: UserProfile) {
   ]
 }
 
-export default function Chat({ profile }: { profile: UserProfile }) {
+export default function Chat({ profile, onHome }: { profile: UserProfile; onHome: () => void }) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
   const { messages, input, setInput, handleSubmit, isLoading, append } = useChat({
     api: '/api/chat', body: { profile },
   })
@@ -74,8 +75,10 @@ export default function Chat({ profile }: { profile: UserProfile }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const empty    = messages.length === 0
-  const starters = buildStarters(profile)
+  const empty      = messages.length === 0
+  const starters   = buildStarters(profile)
+  const aiCount    = messages.filter(m => m.role === 'assistant').length
+  const showBanner = aiCount >= 3 && !bannerDismissed
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -102,6 +105,10 @@ export default function Chat({ profile }: { profile: UserProfile }) {
               {t.icon} {t.label}
             </Link>
           ))}
+          <button onClick={onHome}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/12 mono text-xs text-white/50 hover:text-white hover:bg-white/14 transition-all uppercase tracking-wide">
+            ← Home
+          </button>
         </div>
       </header>
 
@@ -175,6 +182,37 @@ export default function Chat({ profile }: { profile: UserProfile }) {
               <Message key={msg.id} role={msg.role as 'user' | 'assistant'} content={msg.content}
                 isStreaming={isLoading && i === messages.length - 1 && msg.role === 'assistant'} />
             ))}
+            {/* Contact banner after 3 AI replies */}
+            {showBanner && (
+              <div className="fade-up bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9, #34d399)' }} />
+                <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center shrink-0 shadow-sm">
+                      <span className="text-white text-xs font-black mono">TC</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">Want to talk directly?</p>
+                      <p className="text-xs text-slate-500">I read every message — reach out anytime.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a href="https://x.com/Trace_Cohen" target="_blank" rel="noreferrer"
+                      className="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-colors shadow-sm">
+                      𝕏 @Trace_Cohen
+                    </a>
+                    <a href="mailto:t@nyvp.com"
+                      className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
+                      ✉ t@nyvp.com
+                    </a>
+                    <button onClick={() => setBannerDismissed(true)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors text-lg leading-none">
+                      ×
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />
