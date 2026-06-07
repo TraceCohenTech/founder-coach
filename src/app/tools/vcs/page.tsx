@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface VC {
@@ -88,14 +89,33 @@ const SECTORS  = ['B2B SaaS','AI / ML','Fintech','Healthcare','Consumer','Defens
 const GEOS     = ['New York','San Francisco / Bay Area','Los Angeles','Austin','Miami','Europe','Other']
 
 const STAGE_COLOR: Record<string, string> = {
-  'Pre-Seed': '#7c3aed', 'Seed': '#2563eb', 'Series A': '#059669',
+  'Pre-Seed': '#0891b2', 'Seed': '#2563eb', 'Series A': '#059669',
   'Series B': '#d97706', 'Series C+': '#dc2626',
 }
 
-export default function VCTargetList() {
-  const [stage, setStage]   = useState<string | null>(null)
-  const [sector, setSector] = useState<string | null>(null)
-  const [geo, setGeo]       = useState<string | null>(null)
+function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className="px-3 py-1.5 rounded-full text-xs font-bold border transition-all mono uppercase tracking-wide"
+      style={active
+        ? { background: '#1d4ed8', borderColor: '#1d4ed8', color: 'white' }
+        : { background: 'white', borderColor: '#e2e8f0', color: '#64748b' }}>
+      {label}
+    </button>
+  )
+}
+
+function VCTargetListInner() {
+  const params = useSearchParams()
+  const [stage, setStage]   = useState<string | null>(() => {
+    const v = params.get('stage'); return v && STAGES.includes(v) ? v : null
+  })
+  const [sector, setSector] = useState<string | null>(() => {
+    const v = params.get('sector'); return v && SECTORS.includes(v) ? v : null
+  })
+  const [geo, setGeo]       = useState<string | null>(() => {
+    const v = params.get('geo'); return v && GEOS.includes(v) ? v : null
+  })
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
@@ -110,18 +130,6 @@ export default function VCTargetList() {
       return true
     })
   }, [stage, sector, geo, search])
-
-  function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-    return (
-      <button onClick={onClick}
-        className="px-3 py-1.5 rounded-full text-xs font-bold border transition-all mono uppercase tracking-wide"
-        style={active
-          ? { background: '#1d4ed8', borderColor: '#1d4ed8', color: 'white' }
-          : { background: 'white', borderColor: '#e2e8f0', color: '#64748b' }}>
-        {label}
-      </button>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
@@ -244,5 +252,13 @@ export default function VCTargetList() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function VCTargetList() {
+  return (
+    <Suspense>
+      <VCTargetListInner />
+    </Suspense>
   )
 }

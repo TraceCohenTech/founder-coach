@@ -81,7 +81,6 @@ function Formatted({ content }: { content: string }) {
 }
 
 function inline(text: string) {
-  const parts = text.split(/(\[([^\]]+)\]\(([^)]+)\)|\*\*[^*]+\*\*)/)
   return (
     <>
       {text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, i) => {
@@ -96,5 +95,4 @@ function inline(text: string) {
       })}
     </>
   )
-  void parts // suppress unused warning
 }

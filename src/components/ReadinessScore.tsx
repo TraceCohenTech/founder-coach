@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { UserProfile } from '@/lib/system-prompt'
-import { calcScore, getGrade, getComponentScores } from '@/lib/scoring'
+import { calcScore, getGrade, getComponentScores, getScorePushes } from '@/lib/scoring'
 
 // ── Confetti ──────────────────────────────────────────────────────────────────
 const CONFETTI_COLORS = ['#1d4ed8','#0ea5e9','#059669','#d97706','#f43f5e','#06b6d4','#f97316','#10b981']
@@ -23,14 +23,13 @@ const CIRC   = 2 * Math.PI * R
 const ARC270 = CIRC * 0.75
 
 export default function ReadinessScore({ profile, onContinue, onBack }: { profile: UserProfile; onContinue: () => void; onBack: () => void }) {
-  const [show, setShow]   = useState(false)
-  const [disp, setDisp]   = useState(0)
-  const [email, setEmail] = useState('')
-  const [subState, setSubState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [show, setShow]     = useState(false)
+  const [disp, setDisp]     = useState(0)
   const [shared, setShared] = useState(false)
 
   const { score, insights } = useMemo(() => calcScore(profile), [profile])
   const components          = useMemo(() => getComponentScores(profile), [profile])
+  const pushes              = useMemo(() => getScorePushes(profile), [profile])
   const { label, color, desc } = getGrade(score)
 
   useEffect(() => { const t = setTimeout(() => setShow(true), 350); return () => clearTimeout(t) }, [])
@@ -47,20 +46,6 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
     }
     requestAnimationFrame(go)
   }, [show, score])
-
-  async function subscribe(e: React.FormEvent) {
-    e.preventDefault()
-    if (!email.includes('@') || subState !== 'idle') return
-    setSubState('loading')
-    try {
-      await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      })
-    } catch {}
-    setSubState('done')
-  }
 
   function shareScore() {
     const sectorStr = profile.sector.join(', ')
@@ -184,33 +169,44 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
             ))}
           </div>
 
-          {/* Email capture */}
+          {/* What gets you to 80 */}
+          {score < 80 && pushes.length > 0 && (
+            <div className="mb-5 rounded-xl overflow-hidden border border-amber-200"
+              style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 1.4s' }}>
+              <div className="h-1" style={{ background: 'linear-gradient(90deg, #d97706, #f59e0b)' }} />
+              <div className="bg-amber-50 p-4">
+                <p className="mono text-xs font-bold uppercase tracking-widest text-amber-700 mb-3">
+                  What gets you to 80
+                </p>
+                <div className="space-y-2.5">
+                  {pushes.map((push, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className="mono text-xs font-bold uppercase tracking-wide text-amber-600">{push.dimension}</span>
+                        <p className="text-sm font-bold text-slate-800">{push.action}</p>
+                      </div>
+                      <span className="shrink-0 mono text-sm font-black text-emerald-600">+{push.pts}pts</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subscribe CTA */}
           <div className="mb-4 rounded-xl border border-slate-200 overflow-hidden"
             style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 1.5s' }}>
             <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9)' }} />
-            <div className="p-4 bg-slate-50">
-              {subState === 'done' ? (
-                <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-                  <span>✓</span> You&apos;re subscribed — check your inbox.
-                </div>
-              ) : (
-                <>
-                  <p className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                    📬 Get Trace&apos;s VC dealflow insights
-                  </p>
-                  <form onSubmit={subscribe} className="flex gap-2">
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="you@startup.com"
-                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
-                    <button type="submit" disabled={subState === 'loading'}
-                      className="shrink-0 px-3 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50"
-                      style={{ background: '#1d4ed8' }}>
-                      {subState === 'loading' ? '···' : 'Subscribe'}
-                    </button>
-                  </form>
-                  <p className="text-xs text-slate-400 mt-1.5">Free · No spam · Unsubscribe anytime</p>
-                </>
-              )}
+            <div className="p-4 bg-slate-50 flex items-center justify-between gap-3">
+              <div>
+                <p className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-0.5">📬 Trace&apos;s VC insights</p>
+                <p className="text-xs text-slate-400">Weekly dealflow data for founders</p>
+              </div>
+              <a href="https://startupstechvc.beehiiv.com/subscribe" target="_blank" rel="noreferrer"
+                className="shrink-0 px-4 py-2 rounded-lg text-white text-xs font-bold transition-colors hover:opacity-90"
+                style={{ background: '#1d4ed8' }}>
+                Subscribe →
+              </a>
             </div>
           </div>
 

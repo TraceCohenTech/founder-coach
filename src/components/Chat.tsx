@@ -12,12 +12,6 @@ const DOT_GRID = {
   backgroundSize: '24px 24px',
 }
 
-const TOOLS = [
-  { href: '/tools/vcs',       icon: '🎯', label: 'VC Target List',      sub: 'Find your investors',  color: '#dc2626', bg: '#fef2f2' },
-  { href: '/tools/valuation', icon: '💰', label: 'Valuation Estimator', sub: 'See where you stand',  color: '#059669', bg: '#ecfdf5' },
-  { href: '/tools/dilution',  icon: '📉', label: 'Dilution Simulator',  sub: 'Model your cap table', color: '#1d4ed8', bg: '#eff6ff' },
-]
-
 // Stable profile fingerprint for scoping localStorage
 function profileKey(p: UserProfile) {
   return `fc_msg_${[p.stage, p.arr, p.growth, p.geo].join('_').replace(/[^a-z0-9]/gi, '_').slice(0, 48)}`
@@ -25,6 +19,13 @@ function profileKey(p: UserProfile) {
 
 export default function Chat({ profile, onHome }: { profile: UserProfile; onHome: () => void }) {
   const [bannerDismissed, setBannerDismissed] = useState(false)
+
+  const vcHref = `/tools/vcs?stage=${encodeURIComponent(profile.stage)}&sector=${encodeURIComponent(profile.sector[0] ?? '')}&geo=${encodeURIComponent(profile.geo)}`
+  const TOOLS = [
+    { href: vcHref,              icon: '🎯', label: 'VC Target List',      sub: 'Find your investors',  color: '#dc2626', bg: '#fef2f2' },
+    { href: '/tools/valuation',  icon: '💰', label: 'Valuation Estimator', sub: 'See where you stand',  color: '#059669', bg: '#ecfdf5' },
+    { href: '/tools/dilution',   icon: '📉', label: 'Dilution Simulator',  sub: 'Model your cap table', color: '#1d4ed8', bg: '#eff6ff' },
+  ]
 
   const messagesKey = useMemo(() => profileKey(profile), [profile])
 

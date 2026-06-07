@@ -60,6 +60,43 @@ export function getGrade(score: number) {
   return              { label: 'Not Ready Yet',  color: '#dc2626', desc: "Significant issues VCs will find. Work these before starting." }
 }
 
+export interface ScorePush {
+  dimension: string
+  action: string
+  pts: number
+}
+
+export function getScorePushes(p: UserProfile): ScorePush[] {
+  const comps = getComponentScores(p)
+  const { arrPts, gPts } = comps
+  const totalScore = Math.min(100, Math.round(comps.arrPts + comps.gPts + comps.sPts + comps.geoPt))
+  if (totalScore >= 80) return []
+
+  const pushes: ScorePush[] = []
+
+  // ARR: moving to next tier
+  const currentIdx = ARR_IDX[p.arr] ?? 2
+  const targetIdx  = STAGE_TARGET[p.stage] ?? 3
+  if (currentIdx < 7) {
+    const nextIdx  = currentIdx + 1
+    const nextPts  = Math.max(0, Math.min(40, 20 + (nextIdx - targetIdx) * 8))
+    const gain     = nextPts - arrPts
+    if (gain > 0) {
+      const nextLabel = Object.entries(ARR_IDX).find(([, v]) => v === nextIdx)?.[0]
+      if (nextLabel) pushes.push({ dimension: 'Revenue', action: `Reach ${nextLabel} ARR`, pts: gain })
+    }
+  }
+
+  // Growth: moving to next tier
+  const allTiers = Object.entries(GROWTH_PTS).map(([k, pts]) => ({ k, pts }))
+  const betterTier = allTiers.filter(t => t.pts > gPts).sort((a, b) => a.pts - b.pts)[0]
+  if (betterTier) {
+    pushes.push({ dimension: 'Growth', action: `Hit ${betterTier.k} growth`, pts: betterTier.pts - gPts })
+  }
+
+  return pushes.sort((a, b) => b.pts - a.pts).slice(0, 2)
+}
+
 // Deterministic opening — renders instantly, no API call
 export function buildIntro(profile: UserProfile): string {
   const { score, insights } = calcScore(profile)
