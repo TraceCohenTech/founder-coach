@@ -1,21 +1,41 @@
 'use client'
 
+import { useState } from 'react'
+
 export default function Message({ role, content, isStreaming }: { role: 'user' | 'assistant'; content: string; isStreaming?: boolean }) {
   const isUser = role === 'user'
+  const [copied, setCopied] = useState(false)
+
+  function copy() {
+    navigator.clipboard.writeText(content).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
-    <div className={`flex gap-3 fade-up ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex gap-3 fade-up ${isUser ? 'justify-end' : 'justify-start'} group`}>
       {!isUser && (
         <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
           <span className="text-white text-xs font-bold mono">TC</span>
         </div>
       )}
-      <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
-        isUser
-          ? 'bg-slate-900 text-white rounded-tr-sm'
-          : 'bg-white border border-slate-200 border-l-4 border-l-blue-600 text-slate-800 rounded-tl-sm shadow-sm'
-      }`}>
-        {isUser ? <p className="text-white/90">{content}</p> : <Formatted content={content} />}
-        {isStreaming && <span className="inline-block w-1 h-3.5 bg-blue-600 ml-0.5 cursor-blink align-middle rounded-sm" />}
+      <div className="relative max-w-[80%]">
+        <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
+          isUser
+            ? 'bg-slate-900 text-white rounded-tr-sm'
+            : 'bg-white border border-slate-200 border-l-4 border-l-blue-600 text-slate-800 rounded-tl-sm shadow-sm'
+        }`}>
+          {isUser ? <p className="text-white/90">{content}</p> : <Formatted content={content} />}
+          {isStreaming && <span className="inline-block w-1 h-3.5 bg-blue-600 ml-0.5 cursor-blink align-middle rounded-sm" />}
+        </div>
+        {!isUser && !isStreaming && (
+          <button
+            onClick={copy}
+            className="absolute -bottom-6 right-0 flex items-center gap-1 px-2 py-1 rounded-md text-xs mono text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all opacity-0 group-hover:opacity-100"
+          >
+            {copied ? '✓ Copied' : '⎘ Copy'}
+          </button>
+        )}
       </div>
       {isUser && (
         <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">

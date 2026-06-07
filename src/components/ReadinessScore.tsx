@@ -86,6 +86,8 @@ const ARC270 = CIRC * 0.75       // ≈ 329.9
 export default function ReadinessScore({ profile, onContinue, onBack }: { profile: UserProfile; onContinue: () => void; onBack: () => void }) {
   const [show, setShow]   = useState(false)
   const [disp, setDisp]   = useState(0)
+  const [email, setEmail] = useState('')
+  const [subState, setSubState] = useState<'idle' | 'loading' | 'done'>('idle')
   const { score, insights } = useMemo(() => calcScore(profile), [profile])
   const { label, color, desc } = getGrade(score)
 
@@ -103,6 +105,20 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
     }
     requestAnimationFrame(go)
   }, [show, score])
+
+  async function subscribe(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.includes('@') || subState !== 'idle') return
+    setSubState('loading')
+    try {
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+    } catch {}
+    setSubState('done')
+  }
 
   const filled  = ARC270 * (disp / 100)
   const fgDash  = `${filled} ${CIRC}`
@@ -193,6 +209,41 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
                 <div className="text-sm font-bold text-slate-900 truncate">{v}</div>
               </div>
             ))}
+          </div>
+
+          {/* Email capture */}
+          <div className="mb-5 rounded-xl border border-slate-200 overflow-hidden"
+            style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 1.2s' }}>
+            <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9)' }} />
+            <div className="p-4 bg-slate-50">
+              {subState === 'done' ? (
+                <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+                  <span className="text-base">✓</span>
+                  You&apos;re subscribed — check your inbox.
+                </div>
+              ) : (
+                <>
+                  <p className="mono text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                    📬 Get Trace&apos;s VC dealflow insights
+                  </p>
+                  <form onSubmit={subscribe} className="flex gap-2">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="you@startup.com"
+                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    />
+                    <button type="submit" disabled={subState === 'loading'}
+                      className="shrink-0 px-3 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 transition-colors"
+                      style={{ background: '#1d4ed8' }}>
+                      {subState === 'loading' ? '···' : 'Subscribe'}
+                    </button>
+                  </form>
+                  <p className="text-xs text-slate-400 mt-1.5">Free · No spam · Unsubscribe anytime</p>
+                </>
+              )}
+            </div>
           </div>
 
           <button onClick={onContinue}

@@ -64,12 +64,29 @@ function buildStarters(p: UserProfile) {
   ]
 }
 
+const MESSAGES_KEY = 'fc_messages'
+
 export default function Chat({ profile, onHome }: { profile: UserProfile; onHome: () => void }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
-  const { messages, input, setInput, handleSubmit, isLoading, append } = useChat({
-    api: '/api/chat', body: { profile },
+
+  const [initialMessages] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = localStorage.getItem(MESSAGES_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
   })
+
+  const { messages, input, setInput, handleSubmit, isLoading, append } = useChat({
+    api: '/api/chat', body: { profile }, initialMessages,
+  })
+
+  // Persist messages to localStorage
+  useEffect(() => {
+    if (messages.length === 0) return
+    try { localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages)) } catch {}
+  }, [messages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
