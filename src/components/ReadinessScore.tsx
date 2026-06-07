@@ -17,78 +17,80 @@ const PARTICLES = Array.from({ length: 60 }, (_, i) => ({
 }))
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
+const ARR_IDX: Record<string, number> = {
+  'Pre-revenue': 0, '<$10K MRR': 1, '$10K–$50K MRR': 2,
+  '$50K–$200K MRR': 3, '$200K–$500K MRR': 4,
+  '$500K–$2M ARR': 5, '$2M–$10M ARR': 6, '$10M+ ARR': 7,
+}
+const STAGE_TARGET: Record<string, number> = {
+  'Pre-Seed': 0, 'Seed': 2, 'Series A': 5, 'Series B': 6, 'Series C+': 7,
+}
+const GROWTH_PTS: Record<string, number> = {
+  'Pre-revenue / no data yet': 15, '<5% MoM': 8, '5–10% MoM': 18,
+  '10–20% MoM': 26, '20–30% MoM': 32, '30%+ MoM': 35,
+  '2–3x YoY': 28, '3x+ YoY': 35,
+}
+const SECTOR_PTS: Record<string, number> = {
+  'AI / ML': 15, 'Defense Tech': 14, 'Healthcare': 12,
+  'Fintech': 11, 'B2B SaaS': 10, 'Climate': 10, 'Consumer': 7, 'Other': 8,
+}
+const GEO_PTS: Record<string, number> = {
+  'San Francisco / Bay Area': 10, 'New York': 9,
+  'Los Angeles': 8, 'Austin': 8, 'Miami': 7, 'Europe': 7, 'Other': 6,
+}
+
+function getComponentScores(p: UserProfile) {
+  const diff = (ARR_IDX[p.arr] ?? 2) - (STAGE_TARGET[p.stage] ?? 3)
+  const arrPts = Math.max(0, Math.min(40, 20 + diff * 8))
+  const gPts = GROWTH_PTS[p.growth] ?? 15
+  const sPts = Math.max(...p.sector.split(', ').map(s => SECTOR_PTS[s.trim()] ?? 8))
+  const geoPt = GEO_PTS[p.geo] ?? 7
+  return { arrPts, gPts, sPts, geoPt }
+}
+
 function calcScore(p: UserProfile): { score: number; insights: { good: boolean; text: string }[] } {
-  let s = 0
+  const { arrPts, gPts, sPts, geoPt } = getComponentScores(p)
   const ins: { good: boolean; text: string }[] = []
 
-  // ARR vs stage alignment (0–40)
-  const arrIdx: Record<string, number> = {
-    'Pre-revenue': 0, '<$10K MRR': 1, '$10K–$50K MRR': 2,
-    '$50K–$200K MRR': 3, '$200K–$500K MRR': 4,
-    '$500K–$2M ARR': 5, '$2M–$10M ARR': 6, '$10M+ ARR': 7,
-  }
-  const stageTarget: Record<string, number> = {
-    'Pre-Seed': 0, 'Seed': 2, 'Series A': 5, 'Series B': 6, 'Series C+': 7,
-  }
-  const diff = (arrIdx[p.arr] ?? 2) - (stageTarget[p.stage] ?? 3)
-  const arrPts = Math.max(0, Math.min(40, 20 + diff * 8))
-  s += arrPts
+  const diff = (ARR_IDX[p.arr] ?? 2) - (STAGE_TARGET[p.stage] ?? 3)
   ins.push(diff >= 0
     ? { good: true,  text: `${p.arr} is in the right range for ${p.stage}` }
     : { good: false, text: `${p.arr} may be light for ${p.stage} — VCs will probe this first` })
 
-  // Growth (0–35)
-  const growthPts: Record<string, number> = {
-    'Pre-revenue / no data yet': 15, '<5% MoM': 8, '5–10% MoM': 18,
-    '10–20% MoM': 26, '20–30% MoM': 32, '30%+ MoM': 35,
-    '2–3x YoY': 28, '3x+ YoY': 35,
-  }
-  const gPts = growthPts[p.growth] ?? 15
-  s += gPts
   ins.push(gPts >= 28
     ? { good: true,  text: `${p.growth} growth is a standout signal — lead every pitch with it` }
     : gPts >= 18
     ? { good: true,  text: `${p.growth} growth is solid — benchmark it vs. category leaders` }
     : { good: false, text: `${p.growth} growth will get hard questions — have an acceleration story` })
 
-  // Sector premium (0–15)
-  const sectorPts: Record<string, number> = {
-    'AI / ML': 15, 'Defense Tech': 14, 'Healthcare': 12,
-    'Fintech': 11, 'B2B SaaS': 10, 'Climate': 10, 'Consumer': 7, 'Other': 8,
-  }
-  const sPts = sectorPts[p.sector] ?? 9
-  s += sPts
-  if (sPts >= 12) ins.push({ good: true,  text: `${p.sector} is commanding a premium from VCs in 2025` })
-  else if (sPts <= 7) ins.push({ good: false, text: `${p.sector} faces more skepticism — nail your differentiation` })
+  const primarySector = p.sector.split(', ')[0]
+  if (sPts >= 12) ins.push({ good: true,  text: `${primarySector} is commanding a premium from VCs in 2025` })
+  else if (sPts <= 7) ins.push({ good: false, text: `${primarySector} faces more skepticism — nail your differentiation` })
 
-  // Geo (0–10)
-  const geoPts: Record<string, number> = {
-    'San Francisco / Bay Area': 10, 'New York': 9,
-    'Los Angeles': 8, 'Austin': 8, 'Miami': 7, 'Europe': 7, 'Other': 6,
-  }
-  s += geoPts[p.geo] ?? 7
-
-  return { score: Math.min(100, Math.round(s)), insights: ins.slice(0, 4) }
+  return { score: Math.min(100, Math.round(arrPts + gPts + sPts + geoPt)), insights: ins.slice(0, 4) }
 }
 
 function getGrade(score: number) {
-  if (score >= 80) return { label: 'Raise-Ready',    color: '#059669', desc: "Fundamentals are there. Execution is everything now." }
-  if (score >= 65) return { label: 'Getting There',  color: '#1d4ed8', desc: "Solid base with a few gaps. Fix the reds before going wide." }
-  if (score >= 50) return { label: 'Almost Ready',   color: '#d97706', desc: "Key gaps will stall your process. Address them first." }
-  return              { label: 'Not Ready Yet',   color: '#dc2626', desc: "Significant issues VCs will find. Work these before starting." }
+  if (score >= 80) return { label: 'Raise-Ready',   color: '#059669', desc: "Fundamentals are there. Execution is everything now." }
+  if (score >= 65) return { label: 'Getting There', color: '#1d4ed8', desc: "Solid base with a few gaps. Fix the reds before going wide." }
+  if (score >= 50) return { label: 'Almost Ready',  color: '#d97706', desc: "Key gaps will stall your process. Address them first." }
+  return              { label: 'Not Ready Yet',  color: '#dc2626', desc: "Significant issues VCs will find. Work these before starting." }
 }
 
 // ── SVG Gauge (270° arc) ──────────────────────────────────────────────────────
 const R = 70, CX = 90, CY = 92
-const CIRC   = 2 * Math.PI * R   // ≈ 439.8
-const ARC270 = CIRC * 0.75       // ≈ 329.9
+const CIRC   = 2 * Math.PI * R
+const ARC270 = CIRC * 0.75
 
 export default function ReadinessScore({ profile, onContinue, onBack }: { profile: UserProfile; onContinue: () => void; onBack: () => void }) {
   const [show, setShow]   = useState(false)
   const [disp, setDisp]   = useState(0)
   const [email, setEmail] = useState('')
   const [subState, setSubState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [shared, setShared] = useState(false)
+
   const { score, insights } = useMemo(() => calcScore(profile), [profile])
+  const components = useMemo(() => getComponentScores(profile), [profile])
   const { label, color, desc } = getGrade(score)
 
   useEffect(() => { const t = setTimeout(() => setShow(true), 350); return () => clearTimeout(t) }, [])
@@ -120,13 +122,27 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
     setSubState('done')
   }
 
-  const filled  = ARC270 * (disp / 100)
-  const fgDash  = `${filled} ${CIRC}`
-  const bgDash  = `${ARC270} ${CIRC}`
+  function shareScore() {
+    const text = `📊 Just benchmarked my fundraise with @Trace_Cohen's AI Coach\n\nScore: ${score}/100 — ${label}\nStage: ${profile.stage} | Sector: ${profile.sector}\nARR: ${profile.arr} | Growth: ${profile.growth}\nBased in: ${profile.geo}\n\nFree & instant → founder-coach.vercel.app\n#startups #vc #fundraising`
+    navigator.clipboard.writeText(text).catch(() => {})
+    setShared(true)
+    setTimeout(() => setShared(false), 2500)
+  }
+
+  const filled = ARC270 * (disp / 100)
+  const fgDash = `${filled} ${CIRC}`
+  const bgDash = `${ARC270} ${CIRC}`
+
+  const bars = [
+    { label: 'Revenue Fit', pts: components.arrPts, max: 40, color: '#1d4ed8' },
+    { label: 'Growth',      pts: components.gPts,   max: 35, color: '#059669' },
+    { label: 'Sector',      pts: components.sPts,   max: 15, color: '#0ea5e9' },
+    { label: 'Geography',   pts: components.geoPt,  max: 10, color: '#d97706' },
+  ]
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center relative overflow-hidden px-4 py-8">
-      {/* Confetti particles */}
+      {/* Confetti */}
       {PARTICLES.map(p => (
         <div key={p.id} style={{
           position: 'fixed', left: `${p.left}%`, top: '-14px',
@@ -142,16 +158,15 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at 50% 50%, ${color}20 0%, transparent 60%)` }} />
 
-      {/* Score card */}
+      {/* Card */}
       <div className="relative z-10 w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
         style={{ opacity: show ? 1 : 0, transform: show ? 'translateY(0) scale(1)' : 'translateY(28px) scale(0.95)', transition: 'all 0.6s cubic-bezier(0.34,1.56,0.64,1)' }}>
 
-        {/* Top bar */}
         <div className="h-2" style={{ background: `linear-gradient(90deg, ${color}, ${color}80, #60a5fa)` }} />
 
         <div className="p-7">
           {/* Gauge */}
-          <div className="text-center mb-6">
+          <div className="text-center mb-4">
             <p className="mono text-xs text-slate-400 uppercase tracking-widest mb-4">Fundraise Readiness Score</p>
             <div className="flex justify-center mb-3">
               <svg width="180" height="162" viewBox="0 0 180 162">
@@ -177,8 +192,29 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
             <p className="text-sm text-slate-500 max-w-xs mx-auto leading-relaxed">{desc}</p>
           </div>
 
+          {/* Score breakdown bars */}
+          <div className="bg-slate-50 rounded-xl p-4 mb-5 space-y-2.5"
+            style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 0.8s' }}>
+            {bars.map((bar, i) => (
+              <div key={bar.label}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="mono text-xs font-bold text-slate-500 uppercase tracking-wide">{bar.label}</span>
+                  <span className="mono text-xs font-black" style={{ color: bar.color }}>{bar.pts}/{bar.max}</span>
+                </div>
+                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full"
+                    style={{
+                      width: show ? `${(bar.pts / bar.max) * 100}%` : '0%',
+                      background: bar.color,
+                      transition: `width 1.2s cubic-bezier(0.4,0,0.2,1) ${0.9 + i * 0.1}s`,
+                    }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Insights */}
-          <div className="space-y-2 mb-6">
+          <div className="space-y-2 mb-5">
             {insights.map((ins, i) => (
               <div key={i}
                 className="flex items-start gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium"
@@ -186,7 +222,7 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
                   background: ins.good ? '#ecfdf5' : '#fef2f2',
                   border: `1px solid ${ins.good ? '#bbf7d0' : '#fecaca'}`,
                   opacity: show ? 1 : 0, transform: show ? 'translateX(0)' : 'translateX(-10px)',
-                  transition: `all 0.45s ease ${0.7 + i * 0.12}s`,
+                  transition: `all 0.45s ease ${1.2 + i * 0.12}s`,
                 }}>
                 <span className="shrink-0 font-black" style={{ color: ins.good ? '#059669' : '#dc2626' }}>
                   {ins.good ? '▲' : '▼'}
@@ -197,7 +233,7 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
           </div>
 
           {/* Profile chips */}
-          <div className="grid grid-cols-2 gap-2 mb-6">
+          <div className="grid grid-cols-2 gap-2 mb-5">
             {[
               { k: 'Stage',   v: profile.stage },
               { k: 'Sector',  v: profile.sector },
@@ -212,14 +248,13 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
           </div>
 
           {/* Email capture */}
-          <div className="mb-5 rounded-xl border border-slate-200 overflow-hidden"
-            style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 1.2s' }}>
+          <div className="mb-4 rounded-xl border border-slate-200 overflow-hidden"
+            style={{ opacity: show ? 1 : 0, transition: 'opacity 0.5s ease 1.5s' }}>
             <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9)' }} />
             <div className="p-4 bg-slate-50">
               {subState === 'done' ? (
                 <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-                  <span className="text-base">✓</span>
-                  You&apos;re subscribed — check your inbox.
+                  <span>✓</span> You&apos;re subscribed — check your inbox.
                 </div>
               ) : (
                 <>
@@ -227,15 +262,11 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
                     📬 Get Trace&apos;s VC dealflow insights
                   </p>
                   <form onSubmit={subscribe} className="flex gap-2">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                       placeholder="you@startup.com"
-                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
+                      className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
                     <button type="submit" disabled={subState === 'loading'}
-                      className="shrink-0 px-3 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 transition-colors"
+                      className="shrink-0 px-3 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50"
                       style={{ background: '#1d4ed8' }}>
                       {subState === 'loading' ? '···' : 'Subscribe'}
                     </button>
@@ -245,6 +276,15 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
               )}
             </div>
           </div>
+
+          {/* Share button */}
+          <button onClick={shareScore}
+            className="w-full py-2.5 rounded-xl border text-sm font-bold transition-all mb-3"
+            style={shared
+              ? { background: '#ecfdf5', borderColor: '#bbf7d0', color: '#059669' }
+              : { background: 'white', borderColor: '#e2e8f0', color: '#475569' }}>
+            {shared ? '✓ Copied to clipboard — paste on X' : '📤 Share your score'}
+          </button>
 
           <button onClick={onContinue}
             className="w-full py-4 rounded-xl text-white font-black text-base shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all mb-3"

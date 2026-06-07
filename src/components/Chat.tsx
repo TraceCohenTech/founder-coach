@@ -12,55 +12,29 @@ const DOT_GRID = {
 }
 
 const TOOLS = [
-  { href: '/tools/valuation', icon: '💰', label: 'Valuation Estimator', sub: 'See where you stand', color: '#059669', bg: '#ecfdf5' },
+  { href: '/tools/vcs',       icon: '🎯', label: 'VC Target List',      sub: 'Find your investors',  color: '#dc2626', bg: '#fef2f2' },
+  { href: '/tools/valuation', icon: '💰', label: 'Valuation Estimator', sub: 'See where you stand',  color: '#059669', bg: '#ecfdf5' },
   { href: '/tools/dilution',  icon: '📉', label: 'Dilution Simulator',  sub: 'Model your cap table', color: '#1d4ed8', bg: '#eff6ff' },
 ]
 
-// Profile-aware starters replace the generic list
-function buildStarters(p: UserProfile) {
-  const sectorIcon: Record<string, string> = {
-    'AI / ML': '🤖', 'Defense Tech': '🛡️', 'Healthcare': '🏥',
-    'Fintech': '💳', 'B2B SaaS': '🏢', 'Climate': '🌱',
-    'Consumer': '🛍️', 'Other': '🏗️',
-  }
-  const icon = sectorIcon[p.sector] ?? '🏢'
-  const noRev = p.arr === 'Pre-revenue'
-
+function getChips(lastContent: string, profile: UserProfile): string[] {
+  const r = lastContent.toLowerCase()
+  if (r.includes('term sheet') || r.includes('liquidat') || r.includes('pro-rata') || r.includes('anti-dilut'))
+    return ['Walk me through the most important term sheet terms', 'What should I push back on?', 'How do I negotiate a higher valuation cap?']
+  if (r.includes('arr') || r.includes('mrr') || r.includes('revenue') || r.includes('churn') || r.includes('nrr') || r.includes('retention'))
+    return ['How do I improve ARR growth quickly?', 'What NRR should I target at my stage?', 'How do VCs model my growth trajectory?']
+  if (r.includes('pitch') || r.includes('deck') || r.includes('slide') || r.includes('narrative') || r.includes('story'))
+    return ['What do VCs want to see in slide 1?', 'How long should my deck be?', 'Walk me through a winning pitch flow']
+  if (r.includes('investor') || r.includes(' vc ') || r.includes('target') || r.includes('outreach') || r.includes('intro'))
+    return [`Which VCs should I target for ${profile.stage} ${profile.sector}?`, 'How do I get warm intros to VCs?', 'How many VCs should I be pitching at once?']
+  if (r.includes('dilut') || r.includes('cap table') || r.includes('valuation') || r.includes('pre-money') || r.includes('post-money'))
+    return ['Model my dilution across multiple rounds', `What's a fair pre-money for ${profile.stage}?`, 'How do I minimize dilution while maximizing raise?']
+  if (r.includes('close') || r.includes('timeline') || r.includes('urgency') || r.includes('process') || r.includes('lead'))
+    return ['How do I create urgency with multiple investors?', 'What\'s the right timeline for a fundraise?', 'How do I get VCs to move faster?']
   return [
-    {
-      icon: '📊',
-      text: noRev
-        ? `How do I make a compelling case at ${p.stage} without revenue?`
-        : `At ${p.arr}, am I tracking well for a strong ${p.stage} raise?`,
-      color: '#1d4ed8', bg: '#eff6ff',
-    },
-    {
-      icon: '📈',
-      text: p.growth === 'Pre-revenue / no data yet'
-        ? `How do I frame my story at ${p.stage} without a growth rate yet?`
-        : `What do ${p.stage} VCs really think about ${p.growth} growth right now?`,
-      color: '#059669', bg: '#ecfdf5',
-    },
-    {
-      icon,
-      text: `What's the ${p.stage} investor narrative for a ${p.sector} company in 2025?`,
-      color: '#0ea5e9', bg: '#f0f9ff',
-    },
-    {
-      icon: '🎯',
-      text: `Which VCs should I be targeting for ${p.stage} ${p.sector} in ${p.geo}?`,
-      color: '#d97706', bg: '#fffbeb',
-    },
-    {
-      icon: '📄',
-      text: `What terms should I push back on in a ${p.stage} term sheet?`,
-      color: '#dc2626', bg: '#fef2f2',
-    },
-    {
-      icon: '⚡',
-      text: `How do I create urgency and run a competitive ${p.stage} process?`,
-      color: '#059669', bg: '#ecfdf5',
-    },
+    `What's my single strongest selling point for ${profile.stage}?`,
+    'What hard questions will VCs ask me?',
+    'How do I run a competitive fundraising process?',
   ]
 }
 
@@ -68,6 +42,7 @@ const MESSAGES_KEY = 'fc_messages'
 
 export default function Chat({ profile, onHome }: { profile: UserProfile; onHome: () => void }) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const hasAutoOpened = useRef(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
 
   const [initialMessages] = useState(() => {
@@ -82,20 +57,32 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
     api: '/api/chat', body: { profile }, initialMessages,
   })
 
-  // Persist messages to localStorage
+  // Persist messages
   useEffect(() => {
     if (messages.length === 0) return
     try { localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages)) } catch {}
   }, [messages])
 
+  // Auto-intro on fresh session
+  useEffect(() => {
+    if (hasAutoOpened.current || initialMessages.length > 0) return
+    hasAutoOpened.current = true
+    const t = setTimeout(() => {
+      append({ role: 'user', content: 'Give me your honest opening read on my raise.' })
+    }, 400)
+    return () => clearTimeout(t)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const empty      = messages.length === 0
-  const starters   = buildStarters(profile)
-  const aiCount    = messages.filter(m => m.role === 'assistant').length
+  const empty    = messages.length === 0
+  const aiCount  = messages.filter(m => m.role === 'assistant').length
   const showBanner = aiCount >= 3 && !bannerDismissed
+
+  const lastMsg  = messages[messages.length - 1]
+  const showChips = !isLoading && lastMsg?.role === 'assistant' && lastMsg.content.length > 0
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -109,14 +96,14 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
             <div className="text-sm font-bold text-white">Trace Cohen · Fundraising Coach</div>
             <div className="flex items-center gap-2 mt-0.5">
               <div className="pulse-dot w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="mono text-xs text-white/40 uppercase tracking-widest">
+              <span className="mono text-xs text-white/40 uppercase tracking-widest truncate max-w-xs">
                 {profile.sector} · {profile.stage} · {profile.geo}
               </span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {TOOLS.map(t => (
+          {TOOLS.slice(0, 2).map(t => (
             <Link key={t.href} href={t.href}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/8 border border-white/12 mono text-xs text-white/50 hover:text-white hover:bg-white/14 transition-all uppercase tracking-wide">
               {t.icon} {t.label}
@@ -132,65 +119,15 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin" style={DOT_GRID}>
         {empty ? (
+          /* Loading state while auto-intro fires */
           <div className="max-w-2xl mx-auto">
-            {/* Welcome card */}
-            <div className="pop-in bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-5">
-              <div className="h-1.5" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9, #34d399)' }} />
-              <div className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-700 flex items-center justify-center shrink-0 shadow-lg">
-                    <span className="text-white font-black mono text-base">TC</span>
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <span className="font-black text-slate-900 text-lg">Trace Cohen</span>
-                      <span className="mono text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full uppercase tracking-widest">
-                        Managing Partner · NYVP
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600 leading-relaxed">
-                      I know you&apos;re raising {profile.stage} in {profile.sector} out of {profile.geo}.
-                      Ask me anything — I&apos;ll give you straight answers backed by real 2025 deal data.
-                    </p>
-                  </div>
-                </div>
+            <div className="flex gap-3 fade-up">
+              <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                <span className="text-white text-xs font-bold mono">TC</span>
               </div>
-            </div>
-
-            {/* Tool cards */}
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              {TOOLS.map((t, i) => (
-                <Link key={t.href} href={t.href}
-                  className="card-hover bg-white rounded-xl border border-slate-200 p-4 block group fade-up"
-                  style={{ animationDelay: `${i * 0.06}s` }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3 shadow-sm" style={{ background: t.bg }}>
-                    {t.icon}
-                  </div>
-                  <div className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">{t.label}</div>
-                  <div className="mono text-xs mt-0.5 font-semibold uppercase tracking-wide" style={{ color: t.color }}>{t.sub} →</div>
-                </Link>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px flex-1 bg-slate-200" />
-              <span className="mono text-xs text-slate-400 uppercase tracking-widest">questions for your situation</span>
-              <div className="h-px flex-1 bg-slate-200" />
-            </div>
-
-            {/* Adaptive starter prompts */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {starters.map(({ icon, text, color, bg }, i) => (
-                <button key={text}
-                  onClick={() => append({ role: 'user', content: text })}
-                  className="card-hover bg-white flex items-center gap-3 text-left px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm fade-up group"
-                  style={{ animationDelay: `${(i + 2) * 0.06}s` }}>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-base group-hover:scale-110 transition-transform flex-shrink-0" style={{ background: bg }}>
-                    {icon}
-                  </div>
-                  <span className="group-hover:text-slate-900 transition-colors leading-tight">{text}</span>
-                </button>
-              ))}
+              <div className="bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded-xl rounded-tl-sm px-4 py-3 shadow-sm">
+                <span className="text-slate-400 text-sm">···</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -199,6 +136,20 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
               <Message key={msg.id} role={msg.role as 'user' | 'assistant'} content={msg.content}
                 isStreaming={isLoading && i === messages.length - 1 && msg.role === 'assistant'} />
             ))}
+
+            {/* Quick-reply chips */}
+            {showChips && (
+              <div className="flex flex-wrap gap-2 pt-1 pb-1 fade-up">
+                {getChips(lastMsg.content, profile).map(chip => (
+                  <button key={chip}
+                    onClick={() => append({ role: 'user', content: chip })}
+                    className="text-xs px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-700 hover:shadow-sm transition-all shadow-sm">
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Contact banner after 3 AI replies */}
             {showBanner && (
               <div className="fade-up bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
@@ -228,6 +179,23 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Tool cards — show after first AI response */}
+            {aiCount === 1 && !isLoading && (
+              <div className="grid grid-cols-3 gap-2 fade-up">
+                {TOOLS.map((t, i) => (
+                  <Link key={t.href} href={t.href}
+                    className="card-hover bg-white rounded-xl border border-slate-200 p-3 block group"
+                    style={{ animationDelay: `${i * 0.06}s` }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base mb-2 shadow-sm" style={{ background: t.bg }}>
+                      {t.icon}
+                    </div>
+                    <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">{t.label}</div>
+                    <div className="mono text-xs mt-0.5 font-semibold uppercase tracking-wide" style={{ color: t.color, fontSize: 10 }}>{t.sub} →</div>
+                  </Link>
+                ))}
               </div>
             )}
           </div>
