@@ -1,14 +1,14 @@
-import { BENCHMARKS } from './benchmarks'
-
 export interface UserProfile {
   stage: string
-  sector: string
+  sector: string[]   // array — e.g. ['AI / ML', 'B2B SaaS']
   arr: string
   growth: string
   geo: string
+  raiseSize?: string  // e.g. '$3M–$8M'
+  priorRaise?: string // e.g. 'Seed ($2M–$6M)'
 }
 
-export function buildSystemPrompt(profile: UserProfile | null, context: string): string {
+export function buildSystemPrompt(profile: UserProfile | null, ragContext: string): string {
   const benchmarkSummary = `
 LIVE MARKET DATA (2025):
 - Pre-Seed: median $4M valuation, $750K check. VCs want: team + idea + TAM.
@@ -21,23 +21,19 @@ LIVE MARKET DATA (2025):
 - Investor mindset in 2025: capital efficiency > growth. Show the path to profitability.
 `
 
-  const profileSection = profile
-    ? `
+  const profileSection = profile ? `
 FOUNDER PROFILE:
 - Stage: ${profile.stage}
-- Sector: ${profile.sector}
+- Sector: ${profile.sector.join(', ')}
 - ARR/Revenue: ${profile.arr}
 - Growth Rate: ${profile.growth}
-- Location: ${profile.geo}
-`
-    : ''
+- Location: ${profile.geo}${profile.raiseSize ? `\n- Raising: ${profile.raiseSize}` : ''}${profile.priorRaise ? `\n- Prior Raise: ${profile.priorRaise}` : ''}
+` : ''
 
-  const contextSection = context
-    ? `
-RELEVANT KNOWLEDGE BASE CONTENT:
-${context}
-`
-    : ''
+  const contextSection = ragContext ? `
+RELEVANT KNOWLEDGE BASE (cite these when relevant — link as [Article Title](https://www.valueaddvc.com/blog/SLUG)):
+${ragContext}
+` : ''
 
   return `You are Trace Cohen's Founder Fundraising Coach.
 
@@ -64,6 +60,11 @@ RULES:
 - Keep responses tight. Founders are busy. Bullet points > paragraphs when listing things.
 - Sign off with one sharp, actionable next step when relevant.
 - If you don't have specific data for a question, give your best judgment and label it as such.
+- When using knowledge base content, cite it with a markdown link.
+
+CHIPS — After every response, on its own line at the very end, output exactly:
+<chips>Question 1|Question 2|Question 3</chips>
+Rules for chips: exactly 3 questions separated by |, each 4-8 words, highly specific to what you just said (reference exact terms/metrics/companies you mentioned), not generic. These are the natural next questions a smart founder would ask.
 
 You are not ChatGPT with a VC PDF. You are Trace's actual perspective, built from a decade of deals. Act like it.`
 }

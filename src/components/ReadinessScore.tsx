@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { UserProfile } from '@/lib/system-prompt'
+import { calcScore, getGrade, getComponentScores } from '@/lib/scoring'
 
 // ── Confetti ──────────────────────────────────────────────────────────────────
 const CONFETTI_COLORS = ['#1d4ed8','#0ea5e9','#059669','#d97706','#f43f5e','#06b6d4','#f97316','#10b981']
@@ -16,68 +17,7 @@ const PARTICLES = Array.from({ length: 60 }, (_, i) => ({
   dur: 1.5 + (i * 13 % 14) / 10,
 }))
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
-const ARR_IDX: Record<string, number> = {
-  'Pre-revenue': 0, '<$10K MRR': 1, '$10K–$50K MRR': 2,
-  '$50K–$200K MRR': 3, '$200K–$500K MRR': 4,
-  '$500K–$2M ARR': 5, '$2M–$10M ARR': 6, '$10M+ ARR': 7,
-}
-const STAGE_TARGET: Record<string, number> = {
-  'Pre-Seed': 0, 'Seed': 2, 'Series A': 5, 'Series B': 6, 'Series C+': 7,
-}
-const GROWTH_PTS: Record<string, number> = {
-  'Pre-revenue / no data yet': 15, '<5% MoM': 8, '5–10% MoM': 18,
-  '10–20% MoM': 26, '20–30% MoM': 32, '30%+ MoM': 35,
-  '2–3x YoY': 28, '3x+ YoY': 35,
-}
-const SECTOR_PTS: Record<string, number> = {
-  'AI / ML': 15, 'Defense Tech': 14, 'Healthcare': 12,
-  'Fintech': 11, 'B2B SaaS': 10, 'Climate': 10, 'Consumer': 7, 'Other': 8,
-}
-const GEO_PTS: Record<string, number> = {
-  'San Francisco / Bay Area': 10, 'New York': 9,
-  'Los Angeles': 8, 'Austin': 8, 'Miami': 7, 'Europe': 7, 'Other': 6,
-}
-
-function getComponentScores(p: UserProfile) {
-  const diff = (ARR_IDX[p.arr] ?? 2) - (STAGE_TARGET[p.stage] ?? 3)
-  const arrPts = Math.max(0, Math.min(40, 20 + diff * 8))
-  const gPts = GROWTH_PTS[p.growth] ?? 15
-  const sPts = Math.max(...p.sector.split(', ').map(s => SECTOR_PTS[s.trim()] ?? 8))
-  const geoPt = GEO_PTS[p.geo] ?? 7
-  return { arrPts, gPts, sPts, geoPt }
-}
-
-function calcScore(p: UserProfile): { score: number; insights: { good: boolean; text: string }[] } {
-  const { arrPts, gPts, sPts, geoPt } = getComponentScores(p)
-  const ins: { good: boolean; text: string }[] = []
-
-  const diff = (ARR_IDX[p.arr] ?? 2) - (STAGE_TARGET[p.stage] ?? 3)
-  ins.push(diff >= 0
-    ? { good: true,  text: `${p.arr} is in the right range for ${p.stage}` }
-    : { good: false, text: `${p.arr} may be light for ${p.stage} — VCs will probe this first` })
-
-  ins.push(gPts >= 28
-    ? { good: true,  text: `${p.growth} growth is a standout signal — lead every pitch with it` }
-    : gPts >= 18
-    ? { good: true,  text: `${p.growth} growth is solid — benchmark it vs. category leaders` }
-    : { good: false, text: `${p.growth} growth will get hard questions — have an acceleration story` })
-
-  const primarySector = p.sector.split(', ')[0]
-  if (sPts >= 12) ins.push({ good: true,  text: `${primarySector} is commanding a premium from VCs in 2025` })
-  else if (sPts <= 7) ins.push({ good: false, text: `${primarySector} faces more skepticism — nail your differentiation` })
-
-  return { score: Math.min(100, Math.round(arrPts + gPts + sPts + geoPt)), insights: ins.slice(0, 4) }
-}
-
-function getGrade(score: number) {
-  if (score >= 80) return { label: 'Raise-Ready',   color: '#059669', desc: "Fundamentals are there. Execution is everything now." }
-  if (score >= 65) return { label: 'Getting There', color: '#1d4ed8', desc: "Solid base with a few gaps. Fix the reds before going wide." }
-  if (score >= 50) return { label: 'Almost Ready',  color: '#d97706', desc: "Key gaps will stall your process. Address them first." }
-  return              { label: 'Not Ready Yet',  color: '#dc2626', desc: "Significant issues VCs will find. Work these before starting." }
-}
-
-// ── SVG Gauge (270° arc) ──────────────────────────────────────────────────────
+// ── SVG Gauge ─────────────────────────────────────────────────────────────────
 const R = 70, CX = 90, CY = 92
 const CIRC   = 2 * Math.PI * R
 const ARC270 = CIRC * 0.75
@@ -90,7 +30,7 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
   const [shared, setShared] = useState(false)
 
   const { score, insights } = useMemo(() => calcScore(profile), [profile])
-  const components = useMemo(() => getComponentScores(profile), [profile])
+  const components          = useMemo(() => getComponentScores(profile), [profile])
   const { label, color, desc } = getGrade(score)
 
   useEffect(() => { const t = setTimeout(() => setShow(true), 350); return () => clearTimeout(t) }, [])
@@ -123,7 +63,8 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
   }
 
   function shareScore() {
-    const text = `📊 Just benchmarked my fundraise with @Trace_Cohen's AI Coach\n\nScore: ${score}/100 — ${label}\nStage: ${profile.stage} | Sector: ${profile.sector}\nARR: ${profile.arr} | Growth: ${profile.growth}\nBased in: ${profile.geo}\n\nFree & instant → founder-coach.vercel.app\n#startups #vc #fundraising`
+    const sectorStr = profile.sector.join(', ')
+    const text = `📊 Just benchmarked my fundraise with @Trace_Cohen's AI Coach\n\nScore: ${score}/100 — ${label}\nStage: ${profile.stage} | Sector: ${sectorStr}\nARR: ${profile.arr} | Growth: ${profile.growth}\nBased in: ${profile.geo}\n\nFree & instant → founder-coach.vercel.app\n#startups #vc #fundraising`
     navigator.clipboard.writeText(text).catch(() => {})
     setShared(true)
     setTimeout(() => setShared(false), 2500)
@@ -152,7 +93,6 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
         }} />
       ))}
 
-      {/* Background */}
       <div className="absolute inset-0 pointer-events-none"
         style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
       <div className="absolute inset-0 pointer-events-none"
@@ -183,7 +123,6 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
                   fill="#94a3b8" fontFamily="monospace" letterSpacing="2" fontWeight="700">/ 100</text>
               </svg>
             </div>
-
             <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-2"
               style={{ background: `${color}12`, border: `1.5px solid ${color}35` }}>
               <div className="w-2 h-2 rounded-full" style={{ background: color }} />
@@ -202,12 +141,11 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
                   <span className="mono text-xs font-black" style={{ color: bar.color }}>{bar.pts}/{bar.max}</span>
                 </div>
                 <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full"
-                    style={{
-                      width: show ? `${(bar.pts / bar.max) * 100}%` : '0%',
-                      background: bar.color,
-                      transition: `width 1.2s cubic-bezier(0.4,0,0.2,1) ${0.9 + i * 0.1}s`,
-                    }} />
+                  <div className="h-full rounded-full" style={{
+                    width: show ? `${(bar.pts / bar.max) * 100}%` : '0%',
+                    background: bar.color,
+                    transition: `width 1.2s cubic-bezier(0.4,0,0.2,1) ${0.9 + i * 0.1}s`,
+                  }} />
                 </div>
               </div>
             ))}
@@ -216,8 +154,7 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
           {/* Insights */}
           <div className="space-y-2 mb-5">
             {insights.map((ins, i) => (
-              <div key={i}
-                className="flex items-start gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium"
+              <div key={i} className="flex items-start gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium"
                 style={{
                   background: ins.good ? '#ecfdf5' : '#fef2f2',
                   border: `1px solid ${ins.good ? '#bbf7d0' : '#fecaca'}`,
@@ -236,7 +173,7 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
           <div className="grid grid-cols-2 gap-2 mb-5">
             {[
               { k: 'Stage',   v: profile.stage },
-              { k: 'Sector',  v: profile.sector },
+              { k: 'Sector',  v: profile.sector.join(', ') },
               { k: 'Revenue', v: profile.arr },
               { k: 'Growth',  v: profile.growth },
             ].map(({ k, v }) => (
@@ -277,13 +214,13 @@ export default function ReadinessScore({ profile, onContinue, onBack }: { profil
             </div>
           </div>
 
-          {/* Share button */}
+          {/* Share */}
           <button onClick={shareScore}
             className="w-full py-2.5 rounded-xl border text-sm font-bold transition-all mb-3"
             style={shared
               ? { background: '#ecfdf5', borderColor: '#bbf7d0', color: '#059669' }
               : { background: 'white', borderColor: '#e2e8f0', color: '#475569' }}>
-            {shared ? '✓ Copied to clipboard — paste on X' : '📤 Share your score'}
+            {shared ? '✓ Copied — paste on X' : '📤 Share your score'}
           </button>
 
           <button onClick={onContinue}

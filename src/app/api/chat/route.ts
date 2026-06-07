@@ -16,7 +16,7 @@ async function embedQuery(text: string): Promise<number[] | null> {
     const res = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'voyage-large-2', input: [text] }),
+      body: JSON.stringify({ model: 'voyage-3-large', input: [text] }),
     })
     if (!res.ok) return null
     const data = await res.json()
@@ -31,7 +31,7 @@ interface VectorMatch {
 }
 
 async function queryVector(vector: number[], topK = 3): Promise<string> {
-  const url = process.env.UPSTASH_VECTOR_REST_URL
+  const url   = process.env.UPSTASH_VECTOR_REST_URL
   const token = process.env.UPSTASH_VECTOR_REST_TOKEN
   if (!url || !token) return ''
   try {
@@ -44,10 +44,10 @@ async function queryVector(vector: number[], topK = 3): Promise<string> {
     const data = await res.json()
     const matches: VectorMatch[] = data.result ?? []
     if (!matches.length) return ''
-    const snippets = matches
-      .filter(m => m.metadata?.chunk)
-      .map(m => `[${m.metadata!.title ?? m.metadata!.slug}]\n${m.metadata!.chunk}`)
-    return snippets.join('\n\n---\n\n')
+    return matches
+      .filter(m => m.metadata?.chunk && m.metadata?.slug)
+      .map(m => `[${m.metadata!.title ?? m.metadata!.slug}](https://www.valueaddvc.com/blog/${m.metadata!.slug})\n${m.metadata!.chunk}`)
+      .join('\n\n---\n\n')
   } catch { return '' }
 }
 
@@ -56,7 +56,7 @@ async function queryVector(vector: number[], topK = 3): Promise<string> {
 export async function POST(req: Request) {
   const { messages, profile } = await req.json()
 
-  // RAG: embed the latest user message and pull relevant context
+  // RAG: embed latest user message, pull relevant ValueAddVC context
   let ragContext = ''
   const lastUser = [...messages].reverse().find((m: { role: string }) => m.role === 'user')
   if (lastUser?.content) {

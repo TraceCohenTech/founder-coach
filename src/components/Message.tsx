@@ -2,12 +2,25 @@
 
 import { useState } from 'react'
 
+// Strip AI-generated chips tag before display
+function stripChips(content: string) {
+  return content.replace(/\n*<chips>[\s\S]*?<\/chips>\s*$/, '').trim()
+}
+
 export default function Message({ role, content, isStreaming }: { role: 'user' | 'assistant'; content: string; isStreaming?: boolean }) {
   const isUser = role === 'user'
   const [copied, setCopied] = useState(false)
 
+  const displayContent = isUser ? content : stripChips(content)
+
   function copy() {
-    navigator.clipboard.writeText(content).catch(() => {})
+    // Copy plain text with markdown stripped
+    const plain = displayContent
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,3}\s*/gm, '')
+      .trim()
+    navigator.clipboard.writeText(plain).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -25,14 +38,14 @@ export default function Message({ role, content, isStreaming }: { role: 'user' |
             ? 'bg-slate-900 text-white rounded-tr-sm'
             : 'bg-white border border-slate-200 border-l-4 border-l-blue-600 text-slate-800 rounded-tl-sm shadow-sm'
         }`}>
-          {isUser ? <p className="text-white/90">{content}</p> : <Formatted content={content} />}
+          {isUser
+            ? <p className="text-white/90">{content}</p>
+            : <Formatted content={displayContent} />}
           {isStreaming && <span className="inline-block w-1 h-3.5 bg-blue-600 ml-0.5 cursor-blink align-middle rounded-sm" />}
         </div>
         {!isUser && !isStreaming && (
-          <button
-            onClick={copy}
-            className="absolute -bottom-6 right-0 flex items-center gap-1 px-2 py-1 rounded-md text-xs mono text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all opacity-0 group-hover:opacity-100"
-          >
+          <button onClick={copy}
+            className="absolute -bottom-6 right-0 flex items-center gap-1 px-2 py-1 rounded-md text-xs mono text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all opacity-0 group-hover:opacity-100">
             {copied ? '✓ Copied' : '⎘ Copy'}
           </button>
         )}
@@ -68,9 +81,20 @@ function Formatted({ content }: { content: string }) {
 }
 
 function inline(text: string) {
-  return <>{text.split(/(\*\*[^*]+\*\*)/).map((p, i) =>
-    p.startsWith('**') && p.endsWith('**')
-      ? <strong key={i} className="font-bold text-slate-900">{p.slice(2,-2)}</strong>
-      : <span key={i}>{p}</span>
-  )}</>
+  const parts = text.split(/(\[([^\]]+)\]\(([^)]+)\)|\*\*[^*]+\*\*)/)
+  return (
+    <>
+      {text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, i) => {
+        if (p.startsWith('**') && p.endsWith('**')) {
+          return <strong key={i} className="font-bold text-slate-900">{p.slice(2, -2)}</strong>
+        }
+        const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+        if (link) {
+          return <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="text-blue-600 underline hover:text-blue-800">{link[1]}</a>
+        }
+        return <span key={i}>{p}</span>
+      })}
+    </>
+  )
+  void parts // suppress unused warning
 }

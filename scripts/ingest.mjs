@@ -120,7 +120,7 @@ async function embed(texts) {
       'Authorization': `Bearer ${VOYAGE_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model: 'voyage-large-2', input: texts }),
+    body: JSON.stringify({ model: 'voyage-3-large', input: texts }),
   })
   if (!res.ok) throw new Error(`Voyage AI error: ${await res.text()}`)
   const data = await res.json()

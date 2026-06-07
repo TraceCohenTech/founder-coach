@@ -1,10 +1,11 @@
 'use client'
 
 import { useChat } from 'ai/react'
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import Message from './Message'
 import { UserProfile } from '@/lib/system-prompt'
+import { buildIntro } from '@/lib/scoring'
 
 const DOT_GRID = {
   backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
@@ -17,72 +18,58 @@ const TOOLS = [
   { href: '/tools/dilution',  icon: '📉', label: 'Dilution Simulator',  sub: 'Model your cap table', color: '#1d4ed8', bg: '#eff6ff' },
 ]
 
-function getChips(lastContent: string, profile: UserProfile): string[] {
-  const r = lastContent.toLowerCase()
-  if (r.includes('term sheet') || r.includes('liquidat') || r.includes('pro-rata') || r.includes('anti-dilut'))
-    return ['Walk me through the most important term sheet terms', 'What should I push back on?', 'How do I negotiate a higher valuation cap?']
-  if (r.includes('arr') || r.includes('mrr') || r.includes('revenue') || r.includes('churn') || r.includes('nrr') || r.includes('retention'))
-    return ['How do I improve ARR growth quickly?', 'What NRR should I target at my stage?', 'How do VCs model my growth trajectory?']
-  if (r.includes('pitch') || r.includes('deck') || r.includes('slide') || r.includes('narrative') || r.includes('story'))
-    return ['What do VCs want to see in slide 1?', 'How long should my deck be?', 'Walk me through a winning pitch flow']
-  if (r.includes('investor') || r.includes(' vc ') || r.includes('target') || r.includes('outreach') || r.includes('intro'))
-    return [`Which VCs should I target for ${profile.stage} ${profile.sector}?`, 'How do I get warm intros to VCs?', 'How many VCs should I be pitching at once?']
-  if (r.includes('dilut') || r.includes('cap table') || r.includes('valuation') || r.includes('pre-money') || r.includes('post-money'))
-    return ['Model my dilution across multiple rounds', `What's a fair pre-money for ${profile.stage}?`, 'How do I minimize dilution while maximizing raise?']
-  if (r.includes('close') || r.includes('timeline') || r.includes('urgency') || r.includes('process') || r.includes('lead'))
-    return ['How do I create urgency with multiple investors?', 'What\'s the right timeline for a fundraise?', 'How do I get VCs to move faster?']
-  return [
-    `What's my single strongest selling point for ${profile.stage}?`,
-    'What hard questions will VCs ask me?',
-    'How do I run a competitive fundraising process?',
-  ]
+// Stable profile fingerprint for scoping localStorage
+function profileKey(p: UserProfile) {
+  return `fc_msg_${[p.stage, p.arr, p.growth, p.geo].join('_').replace(/[^a-z0-9]/gi, '_').slice(0, 48)}`
 }
 
-const MESSAGES_KEY = 'fc_messages'
-
 export default function Chat({ profile, onHome }: { profile: UserProfile; onHome: () => void }) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const hasAutoOpened = useRef(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
 
+  const messagesKey = useMemo(() => profileKey(profile), [profile])
+
   const [initialMessages] = useState(() => {
-    if (typeof window === 'undefined') return []
-    try {
-      const raw = localStorage.getItem(MESSAGES_KEY)
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
+    // Try to restore from localStorage first
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(messagesKey)
+        const stored = raw ? JSON.parse(raw) : null
+        if (Array.isArray(stored) && stored.length > 0) return stored
+      } catch {}
+    }
+    // Fresh session — deterministic opening, no API call
+    return [{ id: 'intro', role: 'assistant' as const, content: buildIntro(profile) }]
   })
 
-  const { messages, input, setInput, handleSubmit, isLoading, append } = useChat({
+  const { messages, input, setInput, handleSubmit, isLoading, append, reload, error } = useChat({
     api: '/api/chat', body: { profile }, initialMessages,
   })
 
-  // Persist messages
+  // Persist messages scoped to this profile
   useEffect(() => {
     if (messages.length === 0) return
-    try { localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages)) } catch {}
+    try { localStorage.setItem(messagesKey, JSON.stringify(messages)) } catch {}
+  }, [messages, messagesKey])
+
+  // Auto-scroll
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  // Auto-intro on fresh session
-  useEffect(() => {
-    if (hasAutoOpened.current || initialMessages.length > 0) return
-    hasAutoOpened.current = true
-    const t = setTimeout(() => {
-      append({ role: 'user', content: 'Give me your honest opening read on my raise.' })
-    }, 400)
-    return () => clearTimeout(t)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  const empty    = messages.length === 0
-  const aiCount  = messages.filter(m => m.role === 'assistant').length
+  const aiCount    = messages.filter(m => m.role === 'assistant').length
   const showBanner = aiCount >= 3 && !bannerDismissed
 
-  const lastMsg  = messages[messages.length - 1]
-  const showChips = !isLoading && lastMsg?.role === 'assistant' && lastMsg.content.length > 0
+  // Parse AI-generated chips from last assistant message
+  const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+  const chips = useMemo(() => {
+    if (isLoading || !lastAssistant) return []
+    const match = lastAssistant.content.match(/<chips>([\s\S]*?)<\/chips>/)
+    if (!match) return []
+    return match[1].split('|').map(c => c.trim()).filter(Boolean).slice(0, 3)
+  }, [lastAssistant, isLoading])
+
+  const showChips = chips.length > 0 && !isLoading
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -97,7 +84,7 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
             <div className="flex items-center gap-2 mt-0.5">
               <div className="pulse-dot w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span className="mono text-xs text-white/40 uppercase tracking-widest truncate max-w-xs">
-                {profile.sector} · {profile.stage} · {profile.geo}
+                {profile.sector.join(' · ')} · {profile.stage} · {profile.geo}
               </span>
             </div>
           </div>
@@ -118,89 +105,90 @@ export default function Chat({ profile, onHome }: { profile: UserProfile; onHome
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin" style={DOT_GRID}>
-        {empty ? (
-          /* Loading state while auto-intro fires */
-          <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {messages.map((msg, i) => (
+            <Message key={msg.id} role={msg.role as 'user' | 'assistant'} content={msg.content}
+              isStreaming={isLoading && i === messages.length - 1 && msg.role === 'assistant'} />
+          ))}
+
+          {/* Error + retry */}
+          {error && (
             <div className="flex gap-3 fade-up">
-              <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                <span className="text-white text-xs font-bold mono">TC</span>
+              <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-red-600 text-xs font-bold">!</span>
               </div>
-              <div className="bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded-xl rounded-tl-sm px-4 py-3 shadow-sm">
-                <span className="text-slate-400 text-sm">···</span>
+              <div className="flex-1 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-red-700 font-medium">Response failed — possibly rate limited.</p>
+                <button onClick={() => reload()}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors">
+                  Retry
+                </button>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="max-w-2xl mx-auto space-y-4">
-            {messages.map((msg, i) => (
-              <Message key={msg.id} role={msg.role as 'user' | 'assistant'} content={msg.content}
-                isStreaming={isLoading && i === messages.length - 1 && msg.role === 'assistant'} />
-            ))}
+          )}
 
-            {/* Quick-reply chips */}
-            {showChips && (
-              <div className="flex flex-wrap gap-2 pt-1 pb-1 fade-up">
-                {getChips(lastMsg.content, profile).map(chip => (
-                  <button key={chip}
-                    onClick={() => append({ role: 'user', content: chip })}
-                    className="text-xs px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-700 hover:shadow-sm transition-all shadow-sm">
-                    {chip}
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* AI-generated quick-reply chips */}
+          {showChips && (
+            <div className="flex flex-wrap gap-2 pt-1 pb-1 fade-up">
+              {chips.map(chip => (
+                <button key={chip}
+                  onClick={() => append({ role: 'user', content: chip })}
+                  className="text-xs px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-700 hover:shadow-sm transition-all shadow-sm">
+                  {chip}
+                </button>
+              ))}
+            </div>
+          )}
 
-            {/* Contact banner after 3 AI replies */}
-            {showBanner && (
-              <div className="fade-up bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9, #34d399)' }} />
-                <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center shrink-0 shadow-sm">
-                      <span className="text-white text-xs font-black mono">TC</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">Want to talk directly?</p>
-                      <p className="text-xs text-slate-500">I read every message — reach out anytime.</p>
-                    </div>
+          {/* Contact banner after 3 AI replies */}
+          {showBanner && (
+            <div className="fade-up bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="h-1" style={{ background: 'linear-gradient(90deg, #1d4ed8, #0ea5e9, #34d399)' }} />
+              <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center shrink-0 shadow-sm">
+                    <span className="text-white text-xs font-black mono">TC</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <a href="https://x.com/Trace_Cohen" target="_blank" rel="noreferrer"
-                      className="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-colors shadow-sm">
-                      𝕏 @Trace_Cohen
-                    </a>
-                    <a href="mailto:t@nyvp.com"
-                      className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
-                      ✉ t@nyvp.com
-                    </a>
-                    <button onClick={() => setBannerDismissed(true)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors text-lg leading-none">
-                      ×
-                    </button>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">Want to talk directly?</p>
+                    <p className="text-xs text-slate-500">I read every message — reach out anytime.</p>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <a href="https://x.com/Trace_Cohen" target="_blank" rel="noreferrer"
+                    className="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-colors shadow-sm">
+                    𝕏 @Trace_Cohen
+                  </a>
+                  <a href="mailto:t@nyvp.com"
+                    className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
+                    ✉ t@nyvp.com
+                  </a>
+                  <button onClick={() => setBannerDismissed(true)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors text-lg leading-none">
+                    ×
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Tool cards — show after first AI response */}
-            {aiCount === 1 && !isLoading && (
-              <div className="grid grid-cols-3 gap-2 fade-up">
-                {TOOLS.map((t, i) => (
-                  <Link key={t.href} href={t.href}
-                    className="card-hover bg-white rounded-xl border border-slate-200 p-3 block group"
-                    style={{ animationDelay: `${i * 0.06}s` }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base mb-2 shadow-sm" style={{ background: t.bg }}>
-                      {t.icon}
-                    </div>
-                    <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">{t.label}</div>
-                    <div className="mono text-xs mt-0.5 font-semibold uppercase tracking-wide" style={{ color: t.color, fontSize: 10 }}>{t.sub} →</div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <div ref={bottomRef} />
+          {/* Tool cards after first AI reply */}
+          {aiCount === 1 && !isLoading && (
+            <div className="grid grid-cols-3 gap-2 fade-up">
+              {TOOLS.map((t, i) => (
+                <Link key={t.href} href={t.href}
+                  className="card-hover bg-white rounded-xl border border-slate-200 p-3 block group"
+                  style={{ animationDelay: `${i * 0.06}s` }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base mb-2 shadow-sm" style={{ background: t.bg }}>
+                    {t.icon}
+                  </div>
+                  <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-tight">{t.label}</div>
+                  <div className="mono font-semibold uppercase tracking-wide mt-0.5" style={{ color: t.color, fontSize: 10 }}>{t.sub} →</div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Input */}

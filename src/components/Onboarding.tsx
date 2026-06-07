@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import { UserProfile } from '@/lib/system-prompt'
 
-const STEP_COLORS = ['#1d4ed8', '#0ea5e9', '#059669', '#d97706', '#dc2626']
-const STEP_BG    = ['#eff6ff', '#f0f9ff', '#ecfdf5', '#fffbeb', '#fef2f2']
-const STEP_ICONS = ['📊', '🏢', '💵', '📈', '📍']
+const STEP_COLORS = ['#1d4ed8', '#0ea5e9', '#059669', '#d97706', '#dc2626', '#0891b2', '#ca8a04']
+const STEP_BG    = ['#eff6ff', '#f0f9ff', '#ecfdf5', '#fffbeb', '#fef2f2', '#ecfeff', '#fefce8']
+const STEP_ICONS = ['📊', '🏢', '💵', '📈', '📍', '🎯', '📋']
 
 const STEPS = [
   {
@@ -20,7 +20,7 @@ const STEPS = [
     sub: 'Select all that apply — many companies overlap.',
     options: ['B2B SaaS', 'AI / ML', 'Fintech', 'Healthcare', 'Consumer', 'Defense Tech', 'Climate', 'Other'],
     field: 'sector' as keyof UserProfile,
-    multi: true,  // ← multi-select
+    multi: true,
   },
   {
     question: 'Current ARR or MRR?',
@@ -43,15 +43,27 @@ const STEPS = [
     field: 'geo' as keyof UserProfile,
     multi: false,
   },
+  {
+    question: 'How much are you raising?',
+    sub: 'Round size shapes dilution, valuation targets, and which VCs to approach.',
+    options: ['$250K–$1M', '$1M–$3M', '$3M–$8M', '$8M–$20M', '$20M–$50M', '$50M+', 'Not sure yet'],
+    field: 'raiseSize' as keyof UserProfile,
+    multi: false,
+  },
+  {
+    question: 'Have you raised before?',
+    sub: 'Helps me calibrate your narrative and investor expectations.',
+    options: ['No prior funding', 'F&F / Angels (<$500K)', 'Pre-Seed ($500K–$2M)', 'Seed ($2M–$6M)', 'Series A+'],
+    field: 'priorRaise' as keyof UserProfile,
+    multi: false,
+  },
 ]
 
 export default function Onboarding({ onComplete }: { onComplete: (p: UserProfile) => void }) {
-  const [step, setStep]           = useState(0)
-  // answers[i] is the committed answer string for step i (multi-select joined by ", ")
-  const [answers, setAnswers]     = useState<string[]>(Array(STEPS.length).fill(''))
-  // current in-progress selections (always an array)
+  const [step, setStep]             = useState(0)
+  const [answers, setAnswers]       = useState<string[]>(Array(STEPS.length).fill(''))
   const [selections, setSelections] = useState<string[]>([])
-  const [fading, setFading]       = useState(false)
+  const [fading, setFading]         = useState(false)
 
   const current  = STEPS[step]
   const color    = STEP_COLORS[step]
@@ -69,15 +81,21 @@ export default function Onboarding({ onComplete }: { onComplete: (p: UserProfile
 
   function commitAndAdvance(newAnswers: string[]) {
     if (step === STEPS.length - 1) {
-      const profile: Record<string, string> = {}
-      STEPS.forEach((s, i) => { profile[s.field] = newAnswers[i] })
-      onComplete(profile as unknown as UserProfile)
+      const profile: Partial<UserProfile> = {}
+      STEPS.forEach((s, i) => {
+        if (s.field === 'sector') {
+          // sector is multi-select — store as string[]
+          profile.sector = newAnswers[i] ? newAnswers[i].split(', ').filter(Boolean) : []
+        } else {
+          (profile as Record<string, string>)[s.field as string] = newAnswers[i]
+        }
+      })
+      onComplete(profile as UserProfile)
       return
     }
     setFading(true)
     setTimeout(() => {
       setStep(s => s + 1)
-      // Restore any previous selection for the next step
       const nextAns = newAnswers[step + 1]
       setSelections(nextAns ? nextAns.split(', ') : [])
       setFading(false)
@@ -95,7 +113,6 @@ export default function Onboarding({ onComplete }: { onComplete: (p: UserProfile
 
   function back() {
     if (step === 0 || fading) return
-    // Save whatever is currently selected (partial is fine)
     const value = selections.join(', ')
     const newAnswers = [...answers]
     newAnswers[step] = value
@@ -138,12 +155,12 @@ export default function Onboarding({ onComplete }: { onComplete: (p: UserProfile
             Let&apos;s get you<br />
             <span className="font-black" style={{ color }}>benchmarked</span>
           </h1>
-          <p className="text-white/60 text-sm">{step + 1} of {STEPS.length} questions · ~60 seconds</p>
+          <p className="text-white/60 text-sm">{step + 1} of {STEPS.length} questions · ~90 seconds</p>
 
           <div className="flex gap-2 justify-center mt-5">
             {STEPS.map((_, i) => (
               <div key={i} className="rounded-full transition-all duration-300"
-                style={{ width: i === step ? 32 : 8, height: 8, background: i < step ? color : i === step ? color : 'rgba(255,255,255,0.15)' }} />
+                style={{ width: i === step ? 28 : 7, height: 7, background: i < step ? color : i === step ? color : 'rgba(255,255,255,0.15)' }} />
             ))}
           </div>
         </div>
